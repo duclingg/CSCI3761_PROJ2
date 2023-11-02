@@ -1,84 +1,155 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include<stdio.h>
+#include<stdlib.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <netdb.h>
 #include <string.h>
 #include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
+#include <time.h>
 
-#define WINDOW_SIZE 10
+#define MSS 17 // max segment size
+#define WINDOWSIZE 10 // max number of data bytes in the send window
 
-int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <server_ip> <server_port>\n", argv[0]);
-        exit(1);
-    }
+int main(int argc, char *argv[]){
+	int n;
+	struct sockaddr_in serv_addr;
+	struct hostent *server;
+	int seqNumber = 0;
+	int sizeOfSendBuffer = 0;
+	char bufferOut[MSS];
+	char bufferIn[MSS];
+	
+	// check for correct number of command line arguments
+	if (argc < 3){
+		fprintf(stderr, "Usage is %s <ip_address> <portno> \n", argv[0]);
+		exit(0);
+	}
 
-    const char *server_ip = argv[1];
-    int server_port = atoi(argv[2]);
+	// get server ip address and port number
+	int portno = atoi(argv[2]);
+	server = gethostbyname(argv[1]);
+	if (server == NULL){
+		fprintf(stderr, "Error: no such host\n");
+		exit(0);
+	}
 
-    int client_socket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (client_socket == -1) {
-        perror("Error creating socket");
-        exit(1);
-    }
+	// create the socket
+	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sockfd < 0){
+		perror("Error opening socket");
+		exit(1);
+	}
 
-    struct sockaddr_in server_address;
-    server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(server_port);
-    server_address.sin_addr.s_addr = inet_addr(server_ip);
+	// set the server address
+	bzero((char *) &serv_addr, sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET;
+	bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+	serv_addr.sin_port = htons(portno);
 
-    char input_string[1024];
-    printf("Enter a string to send: ");
-    fgets(input_string, sizeof(input_string), stdin);
+	// prompt user for string to send
+    char string[1024];
+	printf("Enter a string to send to the server: ");
+	fgets(string, sizeof(string), stdin);
 
-    size_t string_length = strlen(input_string);
-    printf("String length is: %zu\n", string_length);
+	sizeOfSendBuffer = strlen(string);
+    printf("Total bytes sent is %d\n", sizeOfSendBuffer);
 
-    char* current_position = input_string;
-    int seq_number = 1;
+	// send size of message to server
+	int size = htonl(sizeOfSendBuffer);
+	n = sendto(sockfd, &size, sizeof(size), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+	if (n < 0) {
+		perror("Error: failed to send size of message");
+		exit(1);
+	}
 
-    while (string_length > 0) {
-        int bytes_to_send = (string_length > WINDOW_SIZE) ? WINDOW_SIZE : string_length;
-        char send_buffer[17];
+	// set up the sliding window
+	int windowStart = 1;
+	int windowEnd = WINDOWSIZE;
+	int ackNum = 0;
 
-        // format the sequence number and size into the send buffer
-        sprintf(send_buffer, "%11d%4d", seq_number, bytes_to_send);
+    time_t timeSent;
+    time_t currentTime;
+    time_t MAXWAITITME = 5;
 
-        // send size of message
-        uint32_t size_encoded = htonl(strlen(send_buffer) + bytes_to_send);
-        ssize_t sent_size_bytes = sendto(client_socket, &size_encoded, sizeof(uint32_t), 0, (struct sockaddr*)&server_address, sizeof(server_address));
-        if (sent_size_bytes == -1) {
-            perror("Error sending size to the server");
-            close(client_socket);
-            exit(1);
+	// send the message to the server
+	while (windowStart <= windowEnd){
+        // calculate how much data to send
+        int dataToSend = (MSS - 15 < sizeOfSendBuffer - windowStart + 1) ? (MSS - 15) : (sizeOfSendBuffer - windowStart + 1);
+
+		// fill the buffer with sequence number, size, and data
+		bzero(bufferOut, MSS);
+		sprintf(bufferOut, "%11d%4d", (seqNumber), dataToSend);
+		strncat(bufferOut, string + windowStart - 1, dataToSend); //only send 2 bytes of data
+		
+        // send buffer to server
+		n = sendto(sockfd, bufferOut, MSS, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+		if (n < 0) {
+			perror("Error: failed to send message");
+			exit(1);
+		}
+
+        // update the timeSent
+        timeSent = time(NULL);
+
+		// increment sequence number
+		seqNumber++;
+
+		// receive ACK from server
+		while (1) {
+            bzero(bufferIn, MSS);
+		    n = recvfrom(sockfd, bufferIn, MSS, 0, NULL, NULL);
+
+            // check if data was received
+		    if (n < 0) {
+			    perror("Error: failed to receive ACK");
+			    exit(1);
+		    }
+
+            // check for timeout
+            currentTime = time(NULL);
+            if (currentTime - timeSent > MAXWAITITME) {
+                // resend data and reset timeSent
+                n = sendto(sockfd, bufferOut, MSS, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+                if (n < 0) {
+                    perror("Error: failed to resend message");
+                    exit(1);
+                }
+                // update time for resend 
+                timeSent = time(NULL);
+            }
         }
 
-        // send message
-        ssize_t sent_message_bytes = sendto(client_socket, send_buffer, 17, 0, (struct sockaddr*)&server_address, sizeof(server_address));
-        if (sent_message_bytes == -1) {
-            perror("Error sending message to the server");
-            close(client_socket);
-            exit(1);
-        }
+		// parse the ACK
+		sscanf(bufferIn, "%11d", &ackNum);
 
-        current_position += bytes_to_send;
-        string_length -= bytes_to_send;
-        seq_number++;
-    }
+		// check if ACK is valid
+		if (ackNum != windowStart){
+			// resend data from the seq number received in the ACK
+			windowStart = ackNum;
+            windowEnd = ackNum + WINDOWSIZE;
+		}
 
-    // recieve and send messages to server
-    char received_buffer[1024];
-    ssize_t received_bytes;
-    int received_seq_number, received_size;
+        // update the window boundaries
+        windowStart += dataToSend;
+        windowEnd = windowStart + WINDOWSIZE - 1;
 
-    while ((received_bytes = recvfrom(client_socket, received_buffer, sizeof(received_buffer), 0, NULL, NULL)) > 0) {
-        if (sscanf(received_buffer, "%11d%4d", &received_seq_number, &received_size) == 2) {
-            received_buffer[received_size] = '\0';
-            printf("Received Seq %d, Size %d: %s\n", received_seq_number, received_size, received_buffer);
-        }
-    }   
+		// check if window has reached the end of the data
+		if (windowEnd > sizeOfSendBuffer){
+			windowEnd = sizeOfSendBuffer;
+		}
+	}
 
-    close(client_socket);
+	// receive confirmation from server that the message was received
+	bzero(bufferIn, MSS);
+	n = recvfrom(sockfd, bufferIn, MSS, 0, NULL, NULL);
+	if (n < 0) {
+		perror("Error: failed to receive confirmation");
+		exit(1);
+	}
 
-    return 0;
+	printf("Message successfully sent to server!\n");
+	
+	close(sockfd);
+	return 0;
 }
