@@ -1,0 +1,9 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/justinhoang/Documents/School/Fall 2023/CSCI 3761/Project 2/Client/client'
+relocations:
+  - { offsetInCU: 0x26, offset: 0x26, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x0, symBinAddr: 0x1000039FC, symSize: 0x3D4 }
+  - { offsetInCU: 0x87, offset: 0x87, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x0, symBinAddr: 0x1000039FC, symSize: 0x3D4 }
+  - { offsetInCU: 0x1CB, offset: 0x1CB, size: 0x8, addend: 0x0, symName: __OSSwapInt16, symObjAddr: 0x3D4, symBinAddr: 0x100003DD0, symSize: 0x24 }
+  - { offsetInCU: 0x1F3, offset: 0x1F3, size: 0x8, addend: 0x0, symName: __OSSwapInt32, symObjAddr: 0x3F8, symBinAddr: 0x100003DF4, symSize: 0x20 }
+...
