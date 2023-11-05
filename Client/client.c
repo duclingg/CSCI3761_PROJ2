@@ -27,8 +27,8 @@ int main(int argc, char *argv[]){
 	}
 
 	// get server ip address and port number
+    server = gethostbyname(argv[1]);
 	int portno = atoi(argv[2]);
-	server = gethostbyname(argv[1]);
 	if (server == NULL){
 		fprintf(stderr, "Error: no such host\n");
 		exit(0);
@@ -68,6 +68,7 @@ int main(int argc, char *argv[]){
 	int windowEnd = WINDOWSIZE;
 	int ackNum = 0;
 
+    // set up timeout
     time_t timeSent;
     time_t currentTime;
     time_t MAXWAITITME = 5;
@@ -106,6 +107,9 @@ int main(int argc, char *argv[]){
 			    exit(1);
 		    }
 
+            // parse the ACK
+		    sscanf(bufferIn, "%11d", &ackNum);
+
             // check for timeout
             currentTime = time(NULL);
             if (currentTime - timeSent > MAXWAITITME) {
@@ -119,9 +123,6 @@ int main(int argc, char *argv[]){
                 timeSent = time(NULL);
             }
         }
-
-		// parse the ACK
-		sscanf(bufferIn, "%11d", &ackNum);
 
 		// check if ACK is valid
 		if (ackNum != windowStart){
