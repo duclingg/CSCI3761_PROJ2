@@ -11,6 +11,8 @@
 int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer);
 char *rtrim(char *s);
 
+#define WINDOWSIZE 10;
+
 int main(int argc, char *argv[]) {
 	int n;
 	int sockfd;
@@ -53,7 +55,7 @@ int main(int argc, char *argv[]) {
 	stringSize = htonl(sendSize);
 	n = sendto(sockfd, &stringSize, sizeof(stringSize), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 	sendStuff(sockfd, serv_addr, buffer);
-	printf("String length: %d", sendSize);
+	printf("String length: %d\n", sendSize);
 
 	return 0;
 }
