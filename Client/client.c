@@ -8,12 +8,12 @@
 #include <unistd.h>
 #include <ctype.h>
 
-int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer);
-char *rtrim(char *s);
-
 #define WINDOWSIZE 10
 #define MSS 17
 #define TIMEOUT 5
+
+int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer);
+char *rtrim(char *s);
 
 int main(int argc, char *argv[]) {
 	int n;
@@ -24,20 +24,24 @@ int main(int argc, char *argv[]) {
 	int portNo;
 	char serverip[29];
 
+	// usage error
 	if (argc < 3) {
 		printf("usage is client <ipaddr> <portnumber>\n");
 		exit(1);
 	}
 
+	// prompt user to input a string to send to the server
 	printf("Enter the string you'd like to send: ");
 	memset(buffer, '\0', 100);
 	char *ptr = fgets(buffer, sizeof(buffer), stdin);
 
+	// invalid input
 	if (ptr == NULL) {
 		perror("Error: please enter a string");
 		exit(1);
 	}
 
+	// get size of the string
 	int sendSize = strlen(buffer);
 	if (sendSize > 99) {
 		printf("Error: can't send more than 99 characters");
@@ -54,6 +58,7 @@ int main(int argc, char *argv[]) {
 	serv_addr.sin_port = htons(portNo);
 	serv_addr.sin_addr.s_addr = inet_addr(serverip); 
 
+	// send the string length to the server
 	stringSize = htonl(sendSize);
 	n = sendto(sockfd, &stringSize, sizeof(stringSize), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 	sendStuff(sockfd, serv_addr, buffer);
@@ -63,6 +68,7 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
+// method sends packets to the server
 int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 	int n;
 	char bufferOut[18];
@@ -78,6 +84,7 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 	int windowBottom = 0;
 	int windowTop = WINDOWSIZE - 1;
 
+	// while the bottom of the window is smaller than the string length
 	while (windowBottom < stringSize) {
 		for (int i = windowBottom; i <= windowTop; i += 2) {
 			if (i >= stringSize)
@@ -88,19 +95,25 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 			else
 				sprintf(bufferOut, "%11d%4d%c%c", seqNum, 2, buffer[i], buffer[i+1]);
 
+			// send the string in two byte incrememnts
 			printf("str is '%s', string length is %d\n", buffer, stringSize);
 			printf("sending packet %d, '%s', packet length is %zu\n", seqNum, bufferOut, strlen(bufferOut));
 			sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 			sendTime = time(NULL);
 
+			// continue looping until all ACKs are received
 			for (;;) {
+				// receive response from server
 				memset(bufferRead, 0, 100);
 				n = recvfrom(sockfd, &bufferRead, 100, MSG_DONTWAIT, (struct sockaddr *)&fromAddr, &fromLen);
 
+				// check if response is received from server
 				if (n > 0) {
+					// parse the ACK
 					sscanf(bufferRead, "%11d", &ackNum);
 					printf("Received ACK %d\n", ackNum);
 
+					// slide the window to the right
 					while(windowBottom <= ackNum) {
 						windowBottom+=2;
 						if (windowTop < stringSize) {
@@ -109,7 +122,8 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 					}
 					break;
 				}	
-			
+
+				// check for timeout
 				currentTime = time(NULL);
 				if ((currentTime - sendTime) >= TIMEOUT) {
 					printf("***** TIMEOUT should do a resend\n");
@@ -119,6 +133,7 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 					else
 						sprintf(bufferOut, "%11d%4d%c%c", seqNum, 2, buffer[i], buffer[i+1]);
 					
+					// resend packet if timed out
 					printf("resending packet %d, '%s', packet length is %zu\n", seqNum, bufferOut, strlen(bufferOut));
 					sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 					sendTime = time(NULL);
