@@ -9,7 +9,7 @@
 #include <ctype.h>
 
 #define WINDOWSIZE 10
-#define MSS 17
+#define MSS 17	// max segment size
 #define TIMEOUT 5
 
 int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer);
@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
 // method sends packets to the server
 int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 	int n;
-	char bufferOut[18];
+	char bufferOut[MSS];
 	char bufferRead[1000];
 	int seqNum = 0;
 	time_t sendTime, currentTime;
@@ -96,7 +96,7 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 				sprintf(bufferOut, "%11d%4d%c%c", seqNum, 2, buffer[i], buffer[i+1]);
 
 			// send the string in two byte incrememnts
-			printf("str is '%s', string length is %d\n", buffer, stringSize);
+			printf("str is '%s', strlen is %d\n", buffer, stringSize);
 			printf("sending packet %d, '%s', packet length is %zu\n", seqNum, bufferOut, strlen(bufferOut));
 			sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 			sendTime = time(NULL);
@@ -112,6 +112,8 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 					// parse the ACK
 					sscanf(bufferRead, "%11d", &ackNum);
 					printf("Received ACK %d\n", ackNum);
+
+					seqNum+=2;
 
 					// slide the window to the right
 					while(windowBottom <= ackNum) {
@@ -137,7 +139,24 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 					printf("resending packet %d, '%s', packet length is %zu\n", seqNum, bufferOut, strlen(bufferOut));
 					sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 					sendTime = time(NULL);
-					seqNum+=2;
+					
+					// check if response is received from server
+					if (n > 0) {
+						// parse the ACK
+						sscanf(bufferRead, "%11d", &ackNum);
+						printf("Received ACK %d\n", ackNum);
+
+						seqNum+=2;
+
+						// slide the window to the right
+						while(windowBottom <= ackNum) {
+							windowBottom+=2;
+							if (windowTop < stringSize) {
+								windowTop+=2;
+							}
+						}
+						break;
+					}
 				}
 			}
 		}
