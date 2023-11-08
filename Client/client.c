@@ -11,9 +11,9 @@
 int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer);
 char *rtrim(char *s);
 
-#define WINDOWSIZE 10;
-#define MSS 17;
-#define TIMEOUT 5;
+#define WINDOWSIZE 10
+#define MSS 17
+#define TIMEOUT 5
 
 int main(int argc, char *argv[]) {
 	int n;
@@ -74,10 +74,8 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 	struct sockaddr_in fromAddr;
 	socklen_t fromLen = sizeof(struct sockaddr_in);
 
-	int windowSize = WINDOWSIZE;
 	int windowBase = 0;
-	int windowEnd = windowSize - 1;
-	int timeout = TIMEOUT;
+	int windowEnd = WINDOWSIZE - 1;
 
 	while (windowBase < stringSize) {
 		for (int i = windowBase; i <= windowEnd; i += 2) {
@@ -91,14 +89,8 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 
 			printf("str is '%s', string length is %d\n", buffer, stringSize);
 			printf("sending packet %d, '%s', packet length is %zu\n", seqNum, bufferOut, strlen(bufferOut));
-			sendto(sockfd, bufferOut, strlen(bufferOut), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+			sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 			sendTime = time(NULL);
-		}
-
-		for (int i = windowBase; i <= windowEnd; i += 2) {
-			if (i >= stringSize) {
-				break;
-			}
 
 			memset(bufferRead, 0, 100);
 			n = recvfrom(sockfd, &bufferRead, 100, MSG_DONTWAIT, (struct sockaddr *)&fromAddr, &fromLen);
@@ -111,13 +103,12 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 					windowBase += 2;
 					windowEnd += 2;
 					seqNum += 2;
-				}
-
+						}
 				break;
 			}
 
 			currentTime = time(NULL);
-			if (currentTime - sendTime >= timeout) {
+			if (currentTime - sendTime >= TIMEOUT) {
 				printf("***** TIMEOUT should do a resend\n");
 
 				if (i == stringSize - 1)
@@ -125,7 +116,7 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 				else
 					sprintf(bufferOut, "%11d%4d%c%c", seqNum, 2, buffer[i], buffer[i+1]);
 					
-				sendto(sockfd, bufferOut, strlen(bufferOut), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+				sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 				sendTime = time(NULL);
 				break;
 			}
