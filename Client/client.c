@@ -59,6 +59,7 @@ int main(int argc, char *argv[]) {
 	sendStuff(sockfd, serv_addr, buffer);
 	printf("String length: %d\n", sendSize);
 
+	close(sockfd);
 	return 0;
 }
 
@@ -74,11 +75,11 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 	struct sockaddr_in fromAddr;
 	socklen_t fromLen = sizeof(struct sockaddr_in);
 
-	int windowBase = 0;
-	int windowEnd = WINDOWSIZE - 1;
+	int windowBottom = 0;
+	int windowTop = WINDOWSIZE - 1;
 
-	while (windowBase < stringSize) {
-		for (int i = windowBase; i <= windowEnd; i += 2) {
+	while (windowBottom < stringSize) {
+		for (int i = windowBottom; i <= windowTop; i += 2) {
 			if (i >= stringSize)
 				break;
 
@@ -92,35 +93,41 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 			sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 			sendTime = time(NULL);
 
-			memset(bufferRead, 0, 100);
-			n = recvfrom(sockfd, &bufferRead, 100, MSG_DONTWAIT, (struct sockaddr *)&fromAddr, &fromLen);
-		
-			if (n > 0) {
-				sscanf(bufferRead, "%11d", &ackNum);
-				printf("Received ACK %d\n", ackNum);
+			for (;;) {
+				memset(bufferRead, 0, 100);
+				n = recvfrom(sockfd, &bufferRead, 100, MSG_DONTWAIT, (struct sockaddr *)&fromAddr, &fromLen);
 
-				if (ackNum >= seqNum) {
-					windowBase += 2;
-					windowEnd += 2;
-					seqNum += 2;
+				if (n > 0) {
+					sscanf(bufferRead, "%11d", &ackNum);
+					printf("Received ACK %d\n", ackNum);
+
+					while(windowBottom <= ackNum) {
+						windowBottom+=2;
+						if (windowTop < stringSize) {
+							windowTop+=2;
 						}
-				break;
-			}
-
-			currentTime = time(NULL);
-			if (currentTime - sendTime >= TIMEOUT) {
-				printf("***** TIMEOUT should do a resend\n");
-
-				if (i == stringSize - 1)
-					sprintf(bufferOut, "%11d%4d%c", seqNum, 1, buffer[i]);
-				else
-					sprintf(bufferOut, "%11d%4d%c%c", seqNum, 2, buffer[i], buffer[i+1]);
+					}
+					break;
+				}	
+			
+				currentTime = time(NULL);
+				if ((currentTime - sendTime) >= TIMEOUT) {
+					printf("***** TIMEOUT should do a resend\n");
+				
+					if (i == stringSize - 1)
+						sprintf(bufferOut, "%11d%4d%c", seqNum, 1, buffer[i]);
+					else
+						sprintf(bufferOut, "%11d%4d%c%c", seqNum, 2, buffer[i], buffer[i+1]);
 					
-				sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-				sendTime = time(NULL);
-				break;
+					printf("resending packet %d, '%s', packet length is %zu\n", seqNum, bufferOut, strlen(bufferOut));
+					sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+					sendTime = time(NULL);
+					seqNum+=2;
+				}
 			}
 		}
 	}
+
+	close(sockfd);
 	return 0;
 }
