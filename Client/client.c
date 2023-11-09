@@ -8,9 +8,9 @@
 #include <unistd.h>
 #include <ctype.h>
 
-#define WINDOWSIZE 10
+#define WINDOWSIZE 10 // size of window
 #define MSS 17	// max segment size
-#define TIMEOUT 5
+#define TIMEOUT 5 // timeout time in seconds
 
 int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer);
 char *rtrim(char *s);
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
 
 	buffer[sendSize - 1] = 0;
 
-	// create the socket
+	// create the socket and connect to the server
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	strcpy(serverip, argv[1]);
 	portNo = strtol(argv[2], NULL, 10);
@@ -59,10 +59,10 @@ int main(int argc, char *argv[]) {
 	serv_addr.sin_addr.s_addr = inet_addr(serverip); 
 
 	// send the string length to the server
-	stringSize = htonl(sendSize);
+	stringSize = htonl(sendSize-1);
 	n = sendto(sockfd, &stringSize, sizeof(stringSize), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 	sendStuff(sockfd, serv_addr, buffer);
-	printf("String length: %d\n", sendSize);
+	printf("String length: %d\n", sendSize-1);
 
 	close(sockfd);
 	return 0;
@@ -77,6 +77,7 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 	time_t sendTime, currentTime;
 	int stringSize = strlen(buffer);
 	int ackNum;
+	int sendSize;
 
 	struct sockaddr_in fromAddr;
 	socklen_t fromLen = sizeof(struct sockaddr_in);
@@ -90,15 +91,22 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 			if (i >= stringSize)
 				break;
 
-			if (i == stringSize - 1)
+			sendSize = 17;
+
+			// send the number of bytes
+			if(i == stringSize - 1) {
+				// only 1 byte
 				sprintf(bufferOut, "%11d%4d%c", seqNum, 1, buffer[i]);
-			else
+				sendSize = 16;
+			} else {
+				// 2 bytes being sent
 				sprintf(bufferOut, "%11d%4d%c%c", seqNum, 2, buffer[i], buffer[i+1]);
+			}	
 
 			// send the string in two byte incrememnts
 			printf("str is '%s', strlen is %d\n", buffer, stringSize);
 			printf("sending packet %d, '%s', packet length is %zu\n", seqNum, bufferOut, strlen(bufferOut));
-			sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+			sendto(sockfd, bufferOut, sendSize, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 			sendTime = time(NULL);
 
 			// continue looping until all ACKs are received
@@ -113,7 +121,7 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 					sscanf(bufferRead, "%11d", &ackNum);
 					printf("Received ACK %d\n", ackNum);
 
-					seqNum+=2;
+					seqNum+=2; // increment the sequence number to match with the ack
 
 					// slide the window to the right
 					while(windowBottom <= ackNum) {
@@ -130,14 +138,19 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 				if ((currentTime - sendTime) >= TIMEOUT) {
 					printf("***** TIMEOUT should do a resend\n");
 				
-					if (i == stringSize - 1)
+					// send the number of bytes
+					if(i == stringSize - 1) {
+						// only 1 byte
 						sprintf(bufferOut, "%11d%4d%c", seqNum, 1, buffer[i]);
-					else
+						sendSize = 16;
+					} else {
+						// 2 bytes being sent
 						sprintf(bufferOut, "%11d%4d%c%c", seqNum, 2, buffer[i], buffer[i+1]);
+					}
 					
 					// resend packet if timed out
 					printf("resending packet %d, '%s', packet length is %zu\n", seqNum, bufferOut, strlen(bufferOut));
-					sendto(sockfd, bufferOut, 17, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+					sendto(sockfd, bufferOut, sendSize, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 					sendTime = time(NULL);
 					
 					// check if response is received from server
@@ -146,7 +159,7 @@ int sendStuff(int sockfd, struct sockaddr_in serv_addr, char *buffer) {
 						sscanf(bufferRead, "%11d", &ackNum);
 						printf("Received ACK %d\n", ackNum);
 
-						seqNum+=2;
+						seqNum+=2; // increment the sequence number to match with the ack
 
 						// slide the window to the right
 						while(windowBottom <= ackNum) {
